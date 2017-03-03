@@ -4,9 +4,10 @@ __lua__
 -- vivi clone v0.4
 -- by ajur
 
+cartdata('ajur_vivi')
+
 screen_size = 128
 btns = {0,1,[4]=2,[8]=3}
-
 
 function count_lvl_points(a,b)
  local p = 0
@@ -22,7 +23,7 @@ end
 
 function find_maps()
  local i,j,l = 0,0,{}
- while fget(mget(i,j),0) do
+ while mget(i,j) != 0 do
   add(l,{i,j,count_lvl_points(i,j)})
   i = (i+16) % 128
   if i == 0 then j += 16 end
@@ -35,153 +36,168 @@ lvls = find_maps()
 printh('found ' .. #lvls)
 
 
-function _init()
- if move_in==-40 then
-  if lvl == #lvls then return end
-  lvl += 1
- else
-  lvl = 1
-  score = 0
-  lives=3
- end
- lvl_points=lvls[lvl][3]
- cls()
- cam_x=-129
- speed=5
- body,head={{1,7},{1,7}},{1,7}
- move_in=speed
- head_dir=1
- paused = false
- shake=0
-end
+states = {
+ play = {},
+ score = {}
+}
 
-function _update()
- if cam_x<0 then cam_x=min(cam_x+20,0) end
- if shake > 0 then shake -= 1 end
- if btnp(5) then
-  _init()
-  reload(0x2000, 0x2000, 0x1000)
-  return
- end
- if btnp(4) then
-  paused = not paused
- end
- if paused then return end
+current_state = 'score'
 
- b=btns[btn()]
- if b and move_in > 0 then
-  head_dir = b
- end
- if move_in > 0 then
-  move_in -= 1
- end
- if move_in == 0 then
-  move_in = speed
-  add(body, head)
-  head=vec_by_dir(head,head_dir)
-		sfx(0)
-  local m=mget(lvls[lvl][1]+head[1],lvls[lvl][2]+head[2])
-  if fget(m,0) then
-   move_in = -1
-   sfx(3)
-   lives -= 1
-   shake=10
-  elseif fget(m,2) or vec_in_t(head, body) then
-   move_in = -2
-   sfx(2)
-   lives -= 1
-   shake=10
-  elseif fget(m,1) then
-   score+=1
-   lvl_points-=1
-   mset(lvls[lvl][1]+head[1],lvls[lvl][2]+head[2],0)
-   sfx(1)
-   if lvl_points == 0 then
-    move_in = -10
-   end
+function states.play:init()
+  if move_in==-40 then
+    if lvl == #lvls then return end
+    lvl += 1
   else
-   del(body,body[1])
+    lvl = 1
+    score = 0
+    lives=3
   end
- end
- if move_in < 0 and move_in > -10 then
-  if shake == 0 and lives > 0 then
-   body,head={{1,7},{1,7}},{1,7}
-   head_dir=1
-   move_in = speed
-  end
- end
- if move_in <= -10 then
-  move_in -= 1
-  if move_in == -40 then
+  lvl_points=lvls[lvl][3]
+  cls()
+  cam_x=-129
+  speed=5
+  body,head={{1,7},{1,7}},{1,7}
+  move_in=speed
+  head_dir=1
+  paused = false
+  shake=0
+end
+
+function states.play:update()
+  if cam_x<0 then cam_x=min(cam_x+20,0) end
+  if shake > 0 then shake -= 1 end
+  if btnp(5) then
    _init()
+   reload(0x2000, 0x2000, 0x1000)
+   return
+  end
+  if btnp(4) then
+   paused = not paused
+  end
+  if paused then return end
+
+  b=btns[btn()]
+  if b and move_in > 0 then
+   head_dir = b
+  end
+  if move_in > 0 then
+   move_in -= 1
+  end
+  if move_in == 0 then
+   move_in = speed
+   add(body, head)
+   head=vec_by_dir(head,head_dir)
+ 		sfx(0)
+   local m=mget(lvls[lvl][1]+head[1],lvls[lvl][2]+head[2])
+   if fget(m,0) then
+    move_in = -1
+    sfx(3)
+    lives -= 1
+    shake=10
+   elseif vec_in_t(head, body) then
+    move_in = -2
+    sfx(2)
+    lives -= 1
+    shake=10
+   elseif fget(m,2) then
+    move_in = -3
+    sfx(2)
+    lives -= 1
+    mset(lvls[lvl][1]+head[1],lvls[lvl][2]+head[2],0)
+    shake=10
+   elseif fget(m,1) then
+    score+=1
+    lvl_points-=1
+    mset(lvls[lvl][1]+head[1],lvls[lvl][2]+head[2],0)
+    sfx(1)
+    if lvl_points == 0 then
+     move_in = -10
+    end
+   else
+    del(body,body[1])
+   end
+  end
+  if move_in < 0 and move_in > -10 then
+   if shake == 0 and lives > 0 then
+    body,head={{1,7},{1,7}},{1,7}
+    head_dir=1
+    move_in = speed
+   elseif shake==10 and lives==0 then
+    states.score:add_score(lvl, score)
+   end
+  end
+  if move_in <= -10 then
+   move_in -= 1
+   if move_in == -40 then
+    _init()
+   end
+  end
+end
+
+function states.play:draw()
+  if shake > 0 then
+   camera(cam_x+2-flr(rnd(5)), 2-flr(rnd(5)))
+  else
+   camera(cam_x, 0)
+  end
+  rectfill(0,0,screen_size,screen_size,4)
+  map(lvls[lvl][1],lvls[lvl][2],0,0,16,16)
+  palt(0, false)
+  spr(3,8,8*7)
+  palt(0, true)
+
+  print('score '..score,2,1,7)
+  print('z to pause, x to restart', 2, screen_size-7, 7)
+
+  for i=1,lives do
+   spr(32,screen_size-2-i*6, 1)
+  end
+
+  for b in all(body) do
+   spr(16,8*b[1],8*b[2])
+  end
+  if move_in == -1 then
+   spr(22+head_dir,
+       8*body[#body][1],
+       8*body[#body][2])
+   spr(2,
+       8*head[1],
+       8*head[2])
+  elseif move_in == -2 or move_in == -3 then
+   spr(26+head_dir,
+       8*head[1],
+       8*head[2])
+  else
+   spr(18+head_dir,
+       8*head[1],
+       8*head[2])
+  end
+  if move_in < -10 then
+   draw_popup{"level cleared!"}
+   return
+  end
+  if paused then
+   draw_popup{"paused","z to resume","x to restart"}
+  end
+  if lives == 0 then
+   states.score:draw(true)
   end
  end
-end
 
-function _draw()
- if shake > 0 then
-  camera(cam_x+2-flr(rnd(5)), 2-flr(rnd(5)))
- else
-  camera(cam_x, 0)
- end
- rectfill(0,0,screen_size,screen_size,4)
- map(lvls[lvl][1],lvls[lvl][2],0,0,16,16)
- palt(0, false)
- spr(3,8,8*7)
- palt(0, true)
-
- print('score '..score,2,1,7)
- print('z to pause, x to restart', 2, screen_size-7, 7)
-
- for i=1,lives do
-  spr(32,screen_size-2-i*6, 1)
+ function vec_by_dir(v, d)
+  if d==0 then return {v[1]-1,v[2]} end
+  if d==1 then return {v[1]+1,v[2]} end
+  if d==2 then return {v[1],v[2]-1} end
+  if d==3 then return {v[1],v[2]+1} end
  end
 
- for b in all(body) do
-  spr(16,8*b[1],8*b[2])
- end
- if move_in == -1 then
-  spr(22+head_dir,
-      8*body[#body][1],
-      8*body[#body][2])
-  spr(2,
-      8*head[1],
-      8*head[2])
- elseif move_in == -2 then
-  spr(26+head_dir,
-      8*head[1],
-      8*head[2])
- else
-  spr(18+head_dir,
-      8*head[1],
-      8*head[2])
- end
- if move_in < -10 then
-  draw_popup{"level cleared!"}
-  return
- end
- if paused then
-  draw_popup{"paused","z to resume","x to restart"}
- end
- if lives == 0 then
-  draw_popup{"oh bummer!","x to play again"}
- end
-end
-
-function vec_by_dir(v, d)
- if d==0 then return {v[1]-1,v[2]} end
- if d==1 then return {v[1]+1,v[2]} end
- if d==2 then return {v[1],v[2]-1} end
- if d==3 then return {v[1],v[2]+1} end
-end
-
-function vec_in_t(v,t)
- for w in all(t) do
-  if v[1]==w[1] and v[2]==w[2] then
-   return true
+ function vec_in_t(v,t)
+  for w in all(t) do
+   if v[1]==w[1] and v[2]==w[2] then
+    return true
+   end
   end
- end
- return false
+  return false
 end
 
 function draw_popup(lines)
@@ -199,6 +215,72 @@ function draw_popup(lines)
   ly += 6
  end
 end
+
+
+function states.score:add_score(score_lvl, score_points)
+  add(self.scores, {score_lvl, score_points})
+  local i = 5
+  while i > 0 and self.scores[i][2] < self.scores[i+1][2] do
+    self.scores[i], self.scores[i+1] = self.scores[i+1], self.scores[i]
+    i -= 1
+  end
+  self.scores[6] = nil
+  while i < 5 do
+    dset(i*2, self.scores[i+1][1])
+    dset(i*2+1, self.scores[i+1][2])
+    i += 1
+  end
+end
+
+function states.score:init()
+  self.scores = {}
+  for i=0,9,2 do
+    add(self.scores, {dget(i), dget(i+1)})
+  end
+end
+
+function states.score:update()
+  if btnp(5) then
+    reload(0x2000, 0x2000, 0x1000)
+    current_state = 'play'
+    states[current_state]:init()
+   return
+  end
+end
+
+function states.score:draw(game_over)
+  local lines = {"vivi", "the vicious viper", ""}
+  if game_over then
+    lines = {"oh bummer!", "game over", ""}
+  end
+
+  for sl in all(self.scores) do
+    add(lines, "level "..sl[1]..", points "..sl[2])
+  end
+  add(lines, '')
+  if game_over then
+    add(lines, 'press x to play again')
+  else
+    add(lines, 'press x to play')
+  end
+  cls()
+  draw_popup(lines)
+end
+
+
+
+function _init()
+  states[current_state]:init()
+end
+
+function _update()
+  states[current_state]:update()
+end
+
+function _draw()
+  states[current_state]:draw()
+end
+
 
 __gfx__
 0000000088885888188851184454f454000000000000000000000b33000000000000000000000000008780000000000000000000000000000000000000000000
@@ -498,9 +580,9 @@ __map__
 __sfx__
 0002000006550315002a500265002550027500215001d500125000b50014500195000b00015500105001a500195001950019500195001b5001d5001f5002250026500275002850028500295002a5002c5002e500
 000200001d050210502705030050250002f00029000290002800025000200001b0000c00009000070000400000000000000000000000000000000000000000000000000000000000000000000000000000000000
-000c0000014500145001450014503405030050270501c050110500c050080400402001010100000a0000500011300103000300001000293002930018300193000b3000b300013000130001300013000000000000
+010c0000014500145001450014503405030050270501c050110500c050080400402001010100000a0000500011300103000300001000293002930018300193000b3000b300013000130001300013000000000000
 010c0000356602f65024640116303605030050270501c050110500c050080400402001010100000a0000500001000010000300001000010000a00007000020000000000000000000000000000000000000000000
-001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
+010c000001407014070140701407305072d507295072650724507215071d5071a5071850715507115070e5070c5070c5070c5070c507000072450700007000070000700007000070000700007000070000700007
 001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
 001000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000
